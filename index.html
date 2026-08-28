@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Spatialytics Groundwater</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#0c1412;--panel:#15201c;--card:#1d2c27;--accent:#2dd4bf;--text:#e7f0ec;--muted:#8aa39a;--ok:#34d399;--warn:#fbbf24;--bad:#f87171;--border:#2a3d36}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--panel);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h1{font-size:1.05rem;letter-spacing:.02em}h1 span{color:var(--accent)}
+.search-wrap{flex:1;min-width:140px;display:flex;gap:8px}
+.search-wrap input,select{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:16px}
+button,.btn{background:var(--accent);color:#04221c;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
+.btn-secondary{background:var(--card);border:1px solid var(--border);color:var(--text)}
+main{flex:1;display:flex;min-height:0}
+#map{flex:1;min-width:0}
+.sidebar{width:400px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-header{padding:12px 16px;border-bottom:1px solid var(--border)}
+.coords{font-size:.75rem;color:var(--muted);font-family:ui-monospace,monospace}
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tab{flex:1;background:none;border:none;color:var(--muted);padding:11px 4px;font-size:.72rem;font-weight:700;border-radius:0;border-bottom:2px solid transparent}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{flex:1;overflow-y:auto;padding:14px}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--card);border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid var(--border)}
+.card h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
+.stat-row{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:.9rem}
+.stat-value{font-weight:650;text-align:right}
+.empty-state{text-align:center;padding:28px 14px;color:var(--muted);line-height:1.5}
+.hint{font-size:.75rem;color:var(--muted);margin-top:8px;line-height:1.45}
+.loading{display:flex;align-items:center;gap:8px;color:var(--muted);padding:10px 0}
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+a{color:var(--accent)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:700}
+.badge-ok{background:rgba(52,211,153,.18);color:var(--ok)}
+.badge-warn{background:rgba(251,191,36,.18);color:var(--warn)}
+.badge-bad{background:rgba(248,113,113,.18);color:var(--bad)}
+.badge-blue{background:rgba(45,212,191,.16);color:var(--accent)}
+.well{padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.well:last-child{border-bottom:none}
+.well b{font-size:.9rem}
+.score{font-size:2.1rem;font-weight:800;line-height:1}
+.score-sub{font-size:.8rem;color:var(--muted);margin-top:4px}
+.sheet-handle,.map-toggle{display:none}
+@media(max-width:768px){
+  html,body{height:100dvh}
+  main{position:relative;flex-direction:column}
+  #map{width:100%;height:100%;min-height:0}
+  .sidebar{position:absolute;left:0;right:0;bottom:0;width:100%;height:52%;border-left:none;border-top:1px solid var(--border);border-radius:16px 16px 0 0;z-index:500}
+  body.sheet-collapsed .sidebar{height:56px}
+  body.sheet-collapsed .tabs,body.sheet-collapsed .tab-content{display:none}
+  .sheet-handle{display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 12px 0}
+  .sheet-handle .bar{width:40px;height:4px;background:#64748b;border-radius:999px}
+  .map-toggle{display:inline-flex;margin-left:auto;background:var(--card);border:1px solid var(--border);font-size:.75rem;padding:4px 10px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Spatialytics <span>Groundwater</span></h1>
+  <div class="search-wrap">
+    <input id="searchInput" placeholder="address or city in Minnesota"/>
+    <button id="searchBtn">Go</button>
+  </div>
+  <select id="savedSelect" title="Saved sites">
+    <option value="">Saved sites…</option>
+    <option value="46.358,-94.201|Brainerd">Brainerd</option>
+    <option value="46.341,-94.287|Baxter">Baxter</option>
+    <option value="43.612,-94.769|Christensen Farms Dunnell">Dunnell farm</option>
+    <option value="43.651,-94.726|Sherburn West">Sherburn</option>
+    <option value="43.652,-94.461|Fairmont">Fairmont</option>
+  </select>
+  <button class="btn-secondary" id="clearBtn">Clear</button>
+</header>
+<main>
+  <div id="map"></div>
+  <aside class="sidebar">
+    <div class="sheet-handle" id="sheetHandle"><div class="bar"></div><button type="button" class="map-toggle" id="sheetToggle">Show map</button></div>
+    <div class="sidebar-header">
+      <h2 id="locationTitle">Drop a pin on Minnesota</h2>
+      <div class="coords" id="coordsDisplay">Nearby wells + aquifer vulnerability</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="score">Score</button>
+      <button class="tab" data-tab="wells">Wells</button>
+      <button class="tab" data-tab="risk">Risk</button>
+      <button class="tab" data-tab="sources">Sources</button>
+    </div>
+    <div class="tab-content">
+      <div class="panel active" id="panel-score">
+        <div class="empty-state" id="scoreEmpty">Tap the map. This tool reads live County Well Index records and water-table aquifer vulnerability — not the old hardcoded farm cards.</div>
+        <div id="scoreContent" style="display:none">
+          <div class="card">
+            <h3>Site read</h3>
+            <div class="score" id="scoreNum">—</div>
+            <div class="score-sub" id="scoreLabel"></div>
+            <p class="hint" id="scoreBlurb"></p>
+          </div>
+          <div class="card">
+            <h3>At this pin</h3>
+            <div class="stat-row"><span>Place</span><span class="stat-value" id="snapAddress">—</span></div>
+            <div class="stat-row"><span>Vulnerability</span><span class="stat-value" id="snapVuln">—</span></div>
+            <div class="stat-row"><span>Wells in 1 mi</span><span class="stat-value" id="snapCount">—</span></div>
+            <div class="stat-row"><span>Median static level</span><span class="stat-value" id="snapSwl">—</span></div>
+            <div class="stat-row"><span>Typical aquifer</span><span class="stat-value" id="snapAq">—</span></div>
+          </div>
+          <div class="card">
+            <h3>What this means</h3>
+            <div class="stat-row"><span>Excavation / septic</span><span class="stat-value" id="meanBuild">—</span></div>
+            <div class="stat-row"><span>New domestic well</span><span class="stat-value" id="meanWell">—</span></div>
+            <div class="stat-row"><span>Shallow contamination</span><span class="stat-value" id="meanContam">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="panel-wells">
+        <div class="empty-state" id="wellsEmpty">Drop a pin to list the nearest CWI wells.</div>
+        <div id="wellsContent" style="display:none">
+          <div class="card">
+            <h3>Nearby wells (1 mile)</h3>
+            <div class="stat-row"><span>Returned</span><span class="stat-value" id="wellCount">0</span></div>
+            <div class="stat-row"><span>With a static level</span><span class="stat-value" id="swlCount">0</span></div>
+            <p class="hint">Public-supply wells are hidden. Click a unique number for the official Minnesota Well Index log.</p>
+          </div>
+          <div class="card" id="wellList"></div>
+        </div>
+      </div>
+      <div class="panel" id="panel-risk">
+        <div class="empty-state" id="riskEmpty">Drop a pin.</div>
+        <div id="riskContent" style="display:none">
+          <div class="card">
+            <h3>Water-table aquifer vulnerability</h3>
+            <div class="stat-row"><span>Class</span><span class="stat-value" id="riskClass">—</span></div>
+            <p class="hint" id="riskNote"></p>
+          </div>
+          <div class="card">
+            <h3>Local well mix</h3>
+            <div id="mixStats"></div>
+          </div>
+          <div class="card">
+            <h3>Limits</h3>
+            <p class="hint">Static levels are mostly drill-day measurements, not a current hydrograph. Vulnerability is a regional geologic screen, not a site survey. Always verify with a licensed well contractor and county environmental services before digging, permitting a drainfield, or siting livestock.</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="panel-sources">
+        <div class="card">
+          <h3>Live layers</h3>
+          <p class="hint">County Well Index locations and construction (MGS / MDH). Water-table aquifer vulnerability. Official well logs open on Minnesota Well Index.</p>
+        </div>
+        <div class="card">
+          <h3>Open the source maps</h3>
+          <a class="btn" style="display:block;text-align:center;margin-bottom:8px" href="https://mnwellindex.web.health.state.mn.us/" target="_blank" rel="noopener">Minnesota Well Index</a>
+          <a class="btn btn-secondary" style="display:block;text-align:center;margin-bottom:8px" href="https://www.dnr.state.mn.us/waters/cgm/index.html" target="_blank" rel="noopener">DNR observation wells</a>
+          <a class="btn btn-secondary" style="display:block;text-align:center;margin-bottom:8px" href="https://www.dnr.state.mn.us/waters/groundwater_section/mapping/mn-hydro-atlas.html" target="_blank" rel="noopener">Hydrogeology Atlas HG-03</a>
+          <a class="btn btn-secondary" style="display:block;text-align:center" href="https://gis.crowwing.us/link/jsfe/index.aspx" target="_blank" rel="noopener">Crow Wing County GIS</a>
+        </div>
+      </div>
+    </div>
+  </aside>
+</main>
+<script>
+var WELLS_URL = "https://services.arcgis.com/8df8p0NlLFEShl0r/ArcGIS/rest/services/Wells__All/FeatureServer/0/query";
+var VULN_URL = "https://services.arcgis.com/8df8p0NlLFEShl0r/ArcGIS/rest/services/MN_Water_Table_Aquifer_Vulnerability/FeatureServer/0/query";
+var PWS_USES = {PS:1,CO:1,MU:1,PW:1,PWS:1,COMM:1};
+var USE_LABEL = {DO:"Domestic",MW:"Monitor",IR:"Irrigation",IN:"Industrial",TE:"Test",HE:"Heat pump",OT:"Other",AB:"Abandoned",ST:"Stock",CO:"Commercial",PS:"Public supply"};
+var STATUS_LABEL = {A:"Active",I:"Inactive",S:"Sealed",U:"Unknown"};
+var map, marker, circle, wellLayer, currentLat=null, currentLon=null, currentWells=[];
+map = L.map("map",{zoomControl:true}).setView([46.358,-94.201],8);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+wellLayer = L.layerGroup().addTo(map);
+map.on("click", function(e){ setLocation(e.latlng.lat, e.latlng.lng); });
+window.addEventListener("resize", function(){ setTimeout(function(){ map.invalidateSize(); }, 150); });
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-tab")===name); });
+  document.querySelectorAll(".panel").forEach(function(p){ p.classList.remove("active"); });
+  document.getElementById("panel-"+name).classList.add("active");
+}
+document.querySelectorAll(".tab").forEach(function(tab){
+  tab.addEventListener("click", function(){ showTab(tab.getAttribute("data-tab")); });
+});
+var sheetToggle=document.getElementById("sheetToggle");
+function toggleSheet(){
+  document.body.classList.toggle("sheet-collapsed");
+  if(sheetToggle) sheetToggle.textContent = document.body.classList.contains("sheet-collapsed") ? "Show details" : "Show map";
+  setTimeout(function(){ map.invalidateSize(); }, 200);
+}
+if(sheetToggle) sheetToggle.addEventListener("click", function(e){ e.stopPropagation(); toggleSheet(); });
+document.getElementById("sheetHandle").addEventListener("click", toggleSheet);
+function truncate(s,n){ s=String(s||""); return s.length>n ? s.slice(0,n-1)+"…" : s; }
+function haversineMi(lat1,lon1,lat2,lon2){
+  var R=3958.8, toRad=Math.PI/180;
+  var dLat=(lat2-lat1)*toRad, dLon=(lon2-lon1)*toRad;
+  var a=Math.sin(dLat/2)**2 + Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(a)));
+}
+function median(arr){
+  if(!arr.length) return null;
+  var a=arr.slice().sort(function(x,y){return x-y;});
+  var m=Math.floor(a.length/2);
+  return a.length%2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function badgeForVuln(v){
+  v=(v||"").trim();
+  if(/high/i.test(v)) return '<span class="badge badge-bad">'+v+'</span>';
+  if(/med/i.test(v)) return '<span class="badge badge-warn">'+v+'</span>';
+  if(/low/i.test(v)) return '<span class="badge badge-ok">'+v+'</span>';
+  return '<span class="badge badge-blue">'+(v||"Unknown")+'</span>';
+}
+async function fetchJson(url){
+  var ctrl=new AbortController();
+  var t=setTimeout(function(){ ctrl.abort(); }, 18000);
+  try{
+    var res=await fetch(url,{signal:ctrl.signal});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    return await res.json();
+  } finally { clearTimeout(t); }
+}
+function queryUrl(base, params){
+  var q=Object.keys(params).map(function(k){ return encodeURIComponent(k)+"="+encodeURIComponent(params[k]); }).join("&");
+  return base+"?"+q;
+}
+function setLocation(lat, lon, hint){
+  currentLat=lat; currentLon=lon;
+  if(marker) map.removeLayer(marker);
+  if(circle) map.removeLayer(circle);
+  wellLayer.clearLayers();
+  marker=L.marker([lat,lon]).addTo(map);
+  circle=L.circle([lat,lon],{radius:1609,color:"#2dd4bf",fillColor:"#2dd4bf",fillOpacity:0.08,weight:2}).addTo(map);
+  map.setView([lat,lon], Math.max(map.getZoom()||0, 13));
+  var coord=lat.toFixed(5)+", "+lon.toFixed(5);
+  document.getElementById("coordsDisplay").textContent=coord;
+  document.getElementById("locationTitle").textContent=hint||"Dropped pin";
+  document.getElementById("snapAddress").textContent=hint||"Dropped pin";
+  ["score","wells","risk"].forEach(function(p){
+    document.getElementById(p+"Empty").style.display="none";
+    document.getElementById(p+"Content").style.display="block";
+  });
+  showTab("score");
+  reverseGeocode(lat,lon,hint);
+  loadAnalysis(lat,lon);
+  setTimeout(function(){ map.invalidateSize(); }, 200);
+}
+async function reverseGeocode(lat,lon,hint){
+  try{
+    var res=await fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat="+lat+"&lon="+lon+"&zoom=18&addressdetails=1",{headers:{"Accept-Language":"en"}});
+    var data=await res.json();
+    var addr=data.display_name||hint||"Dropped pin";
+    document.getElementById("locationTitle").textContent=truncate(addr,52);
+    document.getElementById("snapAddress").textContent=truncate(addr,34);
+  }catch(e){}
+}
+function isPublicSupply(use){
+  use=String(use||"").trim().toUpperCase();
+  return !!PWS_USES[use];
+}
+async function loadAnalysis(lat,lon){
+  document.getElementById("scoreBlurb").textContent="Querying CWI wells and vulnerability…";
+  document.getElementById("wellList").innerHTML='<div class="loading"><div class="spinner"></div> Loading wells…</div>';
+  var wells=[], vuln=null, errors=[];
+  try{
+    var wurl=queryUrl(WELLS_URL,{
+      f:"json", where:"1=1", geometry:lon+","+lat, geometryType:"esriGeometryPoint",
+      inSR:"4326", spatialRel:"esriSpatialRelIntersects", distance:"1609", units:"esriSRUnit_Meter",
+      outFields:"unique_no,wellname,use_c,status_c,aquifer,depth_drll,depth_comp,swlavgmeas,swldate,swlcount,elevation,logurl,well_label",
+      returnGeometry:"true", outSR:"4326", resultRecordCount:"200", orderByFields:"objectid"
+    });
+    var wdata=await fetchJson(wurl);
+    wells=(wdata.features||[]).map(function(f){
+      var a=f.attributes||{};
+      var g=f.geometry||{};
+      return {
+        id: String(a.unique_no||a.well_label||"").trim(),
+        name: (a.wellname||"").trim(),
+        use: (a.use_c||"").trim(),
+        status: (a.status_c||"").trim(),
+        aquifer: (a.aquifer||"").trim(),
+        depth: a.depth_comp||a.depth_drll,
+        swl: a.swlavgmeas,
+        swldate: a.swldate,
+        elev: a.elevation,
+        log: a.logurl,
+        lat: g.y, lon: g.x
+      };
+    }).filter(function(w){ return w.lat && w.lon && !isPublicSupply(w.use); });
+    wells.forEach(function(w){ w.mi=haversineMi(lat,lon,w.lat,w.lon); });
+    wells.sort(function(a,b){ return a.mi-b.mi; });
+  }catch(e){ errors.push("Wells: "+(e.message||e)); }
+  try{
+    var vurl=queryUrl(VULN_URL,{
+      f:"json", where:"1=1", geometry:lon+","+lat, geometryType:"esriGeometryPoint",
+      inSR:"4326", spatialRel:"esriSpatialRelIntersects",
+      outFields:"Combined_V,CLASS_LAB,MUNIT_LAB,SandGravel,Geomorphol",
+      returnGeometry:"false"
+    });
+    var vdata=await fetchJson(vurl);
+    vuln=(vdata.features&&vdata.features[0]&&vdata.features[0].attributes)||null;
+  }catch(e){ errors.push("Vulnerability: "+(e.message||e)); }
+  currentWells=wells;
+  paintWellsOnMap(wells);
+  paintResults(wells, vuln, errors);
+}
+function paintWellsOnMap(wells){
+  wellLayer.clearLayers();
+  wells.slice(0,60).forEach(function(w){
+    var color = w.status==="S" ? "#64748b" : (w.aquifer==="QWTA" ? "#38bdf8" : "#2dd4bf");
+    L.circleMarker([w.lat,w.lon],{radius:5,color:color,weight:1,fillColor:color,fillOpacity:0.85})
+      .bindPopup("<b>"+w.id+"</b><br>"+(USE_LABEL[w.use]||w.use||"Well")+" · "+(w.aquifer||"aquifer n/a")+"<br>"+(w.depth?w.depth+" ft deep":"")+(w.swl!=null?" · SWL "+w.swl+" ft":""))
+      .addTo(wellLayer);
+  });
+}
+function paintResults(wells, vuln, errors){
+  var vClass = vuln && String(vuln.Combined_V||vuln.CLASS_LAB||"").trim();
+  var swls = wells.map(function(w){ return Number(w.swl); }).filter(function(n){ return isFinite(n) && n>=0 && n<800; });
+  var med = median(swls);
+  var aqCounts={};
+  wells.forEach(function(w){ var k=w.aquifer||"Uncoded"; aqCounts[k]=(aqCounts[k]||0)+1; });
+  var topAq = Object.keys(aqCounts).sort(function(a,b){ return aqCounts[b]-aqCounts[a]; })[0] || "—";
+  var qwta = wells.filter(function(w){ return w.aquifer==="QWTA"; }).length;
+  var sealed = wells.filter(function(w){ return w.status==="S"; }).length;
+  var score=72, reasons=[];
+  if(/high/i.test(vClass)){ score-=22; reasons.push("high water-table vulnerability"); }
+  else if(/med/i.test(vClass)){ score-=10; reasons.push("moderate vulnerability"); }
+  else if(/low/i.test(vClass)){ score+=6; reasons.push("lower-vulnerability materials"); }
+  if(med!=null && med<15){ score-=16; reasons.push("very shallow static levels nearby"); }
+  else if(med!=null && med<30){ score-=8; reasons.push("shallow static levels"); }
+  else if(med!=null && med>=80){ score+=6; reasons.push("deeper static levels"); }
+  if(qwta>=3){ score-=6; reasons.push("several water-table (QWTA) wells"); }
+  if(wells.length===0){ score-=12; reasons.push("no CWI wells in 1 mile"); }
+  score=Math.max(18, Math.min(94, score));
+  var band, badge;
+  if(score>=75){ band="More buffered"; badge="badge-ok"; }
+  else if(score>=55){ band="Mixed / verify on site"; badge="badge-warn"; }
+  else { band="Shallow / sensitive"; badge="badge-bad"; }
+  document.getElementById("scoreNum").textContent=score;
+  document.getElementById("scoreLabel").innerHTML='<span class="badge '+badge+'">'+band+'</span>';
+  document.getElementById("scoreBlurb").textContent = reasons.length
+    ? ("Driven by "+reasons.join("; ")+". Screening score only — not a hydrogeologic study.")
+    : "Not enough local attributes for a strong read.";
+  document.getElementById("snapVuln").innerHTML=badgeForVuln(vClass||"No polygon");
+  document.getElementById("snapCount").textContent=wells.length;
+  document.getElementById("snapSwl").textContent = med!=null ? med.toFixed(0)+" ft bgs" : "—";
+  document.getElementById("snapAq").textContent=topAq;
+  document.getElementById("meanBuild").innerHTML = (med!=null && med<20) || /high/i.test(vClass)
+    ? '<span class="badge badge-bad">High water table risk</span>'
+    : (med!=null && med<40) || /med/i.test(vClass)
+      ? '<span class="badge badge-warn">Check before digging</span>'
+      : '<span class="badge badge-ok">Usually more room</span>';
+  document.getElementById("meanWell").innerHTML = wells.length
+    ? '<span class="badge badge-blue">Neighbors at '+(med!=null?med.toFixed(0)+" ft SWL":"unknown SWL")+'</span>'
+    : '<span class="badge badge-warn">Sparse well control</span>';
+  document.getElementById("meanContam").innerHTML = /high/i.test(vClass) || qwta>=3
+    ? '<span class="badge badge-bad">Fast path to groundwater</span>'
+    : /low/i.test(vClass)
+      ? '<span class="badge badge-ok">More geologic buffer</span>'
+      : '<span class="badge badge-warn">Typical central MN mix</span>';
+  document.getElementById("wellCount").textContent=wells.length;
+  document.getElementById("swlCount").textContent=swls.length;
+  document.getElementById("wellList").innerHTML = wells.slice(0,20).map(function(w){
+    var date=w.swldate ? String(w.swldate) : "";
+    if(date.length===8) date=date.slice(0,4)+"-"+date.slice(4,6)+"-"+date.slice(6);
+    var href=w.log || ("https://mnwellindex.web.health.state.mn.us/mwi/welllog.xhtml?wellId="+w.id);
+    return '<div class="well"><b><a href="'+href+'" target="_blank" rel="noopener">'+w.id+'</a></b> · '+(w.mi.toFixed(2))+' mi<br>'+
+      (USE_LABEL[w.use]||w.use||"Use n/a")+' · '+(STATUS_LABEL[w.status]||w.status||"—")+
+      (w.aquifer?" · "+w.aquifer:"")+
+      (w.depth!=null?" · "+w.depth+" ft deep":"")+
+      (w.swl!=null?" · SWL "+w.swl+" ft"+(date?" ("+date+")":""):"")+'</div>';
+  }).join("") || "No non-public-supply CWI wells in this mile.";
+  document.getElementById("riskClass").innerHTML=badgeForVuln(vClass||"Unknown");
+  document.getElementById("riskNote").textContent = /high/i.test(vClass)
+    ? "High class usually means sandy or gravelly near-surface materials. Nutrients and spills can move toward the water table faster."
+    : /med/i.test(vClass)
+      ? "Medium class is common on mixed glacial terrain. Treat livestock, septic, and fuel storage as site-specific."
+      : /low/i.test(vClass)
+        ? "Lower class usually has more fine-grained cover. Still confirm locally — buried sands can sit under till."
+        : "Vulnerability polygon did not return a class at this exact point.";
+  var mixHtml="";
+  Object.keys(aqCounts).sort(function(a,b){return aqCounts[b]-aqCounts[a];}).forEach(function(k){
+    mixHtml+='<div class="stat-row"><span>'+k+'</span><span class="stat-value">'+aqCounts[k]+'</span></div>';
+  });
+  mixHtml+='<div class="stat-row"><span>Sealed</span><span class="stat-value">'+sealed+'</span></div>';
+  document.getElementById("mixStats").innerHTML=mixHtml || "No wells.";
+  if(errors.length) document.getElementById("scoreBlurb").textContent += " "+errors.join(" ");
+}
+document.getElementById("searchBtn").addEventListener("click", doSearch);
+document.getElementById("searchInput").addEventListener("keydown", function(e){ if(e.key==="Enter") doSearch(); });
+async function doSearch(){
+  var raw=document.getElementById("searchInput").value.trim();
+  if(!raw) return;
+  try{
+    var res=await fetch("https://nominatim.openstreetmap.org/search?format=json&q="+encodeURIComponent(raw+" Minnesota")+"&limit=5&countrycodes=us",{headers:{"Accept-Language":"en"}});
+    var data=await res.json();
+    if(!data||!data.length) throw new Error("none");
+    setLocation(parseFloat(data[0].lat), parseFloat(data[0].lon), data[0].display_name);
+  }catch(e){ alert("No match. Drop a pin instead."); }
+}
+document.getElementById("savedSelect").addEventListener("change", function(){
+  var v=this.value; if(!v) return;
+  var parts=v.split("|");
+  var ll=parts[0].split(",");
+  setLocation(parseFloat(ll[0]), parseFloat(ll[1]), parts[1]||"Saved site");
+});
+document.getElementById("clearBtn").addEventListener("click", function(){
+  if(marker) map.removeLayer(marker);
+  if(circle) map.removeLayer(circle);
+  wellLayer.clearLayers();
+  marker=circle=null; currentLat=currentLon=null; currentWells=[];
+  document.getElementById("locationTitle").textContent="Drop a pin on Minnesota";
+  document.getElementById("coordsDisplay").textContent="Nearby wells + aquifer vulnerability";
+  ["score","wells","risk"].forEach(function(p){
+    document.getElementById(p+"Empty").style.display="block";
+    document.getElementById(p+"Content").style.display="none";
+  });
+  showTab("score");
+  map.setView([46.358,-94.201],8);
+  document.getElementById("savedSelect").value="";
+});
+</script>
+</body>
+</html>
